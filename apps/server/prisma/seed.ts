@@ -1,0 +1,3 @@
+import 'dotenv/config';import {PrismaClient} from '@prisma/client';import {encryptJson} from '../src/lib/crypto.js';const prisma=new PrismaClient();
+async function main(){if(await prisma.environment.count())return;const env=await prisma.environment.create({data:{name:'Finland',emailAddress:'finland@example.com',fromName:'XMail Finland',rateLimitPerMinute:20,smtpConfigEncrypted:encryptJson({host:'smtp.example.com',port:587,secure:false,user:'finland@example.com',password:'change-me'})}});await prisma.contact.createMany({data:[{environmentId:env.id,email:'alex@example.org',firstName:'Alex',tagsJson:'["lead"]'},{environmentId:env.id,email:'sam@example.org',firstName:'Sam',tagsJson:'["customer"]'}]});}
+main().finally(()=>prisma.$disconnect());

@@ -1,0 +1,16 @@
+{
+  "name": "xmail",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently -n SERVER,CLIENT -c blue,magenta \"npm run dev -w @xmail/server\" \"npm run dev -w @xmail/client\"",
+    "build": "npm run build -w @xmail/shared && npm run build -w @xmail/server && npm run build -w @xmail/client",
+    "db:generate": "npm run prisma:generate -w @xmail/server",
+    "db:migrate": "npm run prisma:migrate -w @xmail/server",
+    "db:seed": "npm run prisma:seed -w @xmail/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

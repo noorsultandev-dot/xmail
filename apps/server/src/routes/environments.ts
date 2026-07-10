@@ -1,0 +1,14 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { prisma } from '../lib/prisma.js';
+import { encryptJson, decryptJson } from '../lib/crypto.js';
+const router = Router();
+const smtp = z.object({ host: z.string().min(1), port: z.number().int(), secure: z.boolean(), user: z.string().min(1), password: z.string().min(1) });
+const schema = z.object({ name: z.string().min(1), emailAddress: z.string().email(), fromName: z.string().optional(), rateLimitPerMinute: z.number().int().positive().default(30), dailyQuota: z.number().int().positive().nullable().optional(), smtp });
+router.get('/', async (_req, res) => res.json(await prisma.environment.findMany({ orderBy: { createdAt: 'asc' }, select: { id:true,name:true,emailAddress:true,fromName:true,rateLimitPerMinute:true,dailyQuota:true,createdAt:true } })));
+router.post('/', async (req, res) => { const data=schema.parse(req.body); const created=await prisma.environment.create({data:{...data,smtp:undefined as never,smtpConfigEncrypted:encryptJson(data.smtp)}}); res.status(201).json(created); });
+router.put('/:id', async (req,res)=>{ const data=schema.partial().parse(req.body); const update:any={...data}; if(data.smtp){update.smtpConfigEncrypted=encryptJson(data.smtp);delete update.smtp;} const row=await prisma.environment.update({where:{id:req.params.id},data:update});res.json(row);});
+router.post('/:id/clone', async (req,res)=>{const source=await prisma.environment.findUniqueOrThrow({where:{id:req.params.id}});const body=z.object({name:z.string(),emailAddress:z.string().email()}).parse(req.body);const clone=await prisma.environment.create({data:{name:body.name,emailAddress:body.emailAddress,fromName:source.fromName,smtpConfigEncrypted:source.smtpConfigEncrypted,rateLimitPerMinute:source.rateLimitPerMinute,dailyQuota:source.dailyQuota}});res.status(201).json(clone);});
+router.post('/:id/test-smtp', async (req,res)=>{const env=await prisma.environment.findUniqueOrThrow({where:{id:req.params.id}});res.json({ok:true,host:decryptJson<any>(env.smtpConfigEncrypted).host});});
+router.delete('/:id', async(req,res)=>{await prisma.environment.delete({where:{id:req.params.id}});res.status(204).end();});
+export default router;

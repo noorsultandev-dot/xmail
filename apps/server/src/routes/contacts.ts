@@ -1,0 +1,11 @@
+import { Router } from 'express';
+import { parse } from 'csv-parse';
+import { Readable } from 'node:stream';
+import { prisma } from '../lib/prisma.js';
+import { z } from 'zod';
+const router=Router();
+router.get('/:environmentId',async(req,res)=>{const q=String(req.query.q??'');const rows=await prisma.contact.findMany({where:{environmentId:req.params.environmentId,OR:q?[{email:{contains:q}},{firstName:{contains:q}},{lastName:{contains:q}}]:undefined},orderBy:{createdAt:'desc'},take:500});res.json(rows.map(r=>({...r,tags:JSON.parse(r.tagsJson),custom:JSON.parse(r.customJson)})));});
+router.post('/:environmentId',async(req,res)=>{const d=z.object({email:z.string().email(),firstName:z.string().optional(),lastName:z.string().optional(),tags:z.array(z.string()).default([]),custom:z.record(z.any()).default({})}).parse(req.body);const row=await prisma.contact.create({data:{environmentId:req.params.environmentId,email:d.email.toLowerCase(),firstName:d.firstName,lastName:d.lastName,tagsJson:JSON.stringify(d.tags),customJson:JSON.stringify(d.custom)}});res.status(201).json(row);});
+router.post('/:environmentId/import',async(req,res)=>{const {csv,mapping}=z.object({csv:z.string(),mapping:z.object({email:z.string(),firstName:z.string().optional(),lastName:z.string().optional(),tags:z.string().optional()})}).parse(req.body);let imported=0,skipped=0,invalid=0;const parser=Readable.from(csv).pipe(parse({columns:true,skip_empty_lines:true,trim:true}));for await(const record of parser){const email=String(record[mapping.email]??'').trim().toLowerCase();if(!/^\S+@\S+\.\S+$/.test(email)){invalid++;continue;}try{await prisma.contact.create({data:{environmentId:req.params.environmentId,email,firstName:mapping.firstName?record[mapping.firstName]:null,lastName:mapping.lastName?record[mapping.lastName]:null,tagsJson:JSON.stringify(mapping.tags?String(record[mapping.tags]??'').split(',').map((x:string)=>x.trim()).filter(Boolean):[])}});imported++;}catch{skipped++;}}res.json({imported,skipped,invalid});});
+router.delete('/:environmentId/:id',async(req,res)=>{await prisma.contact.delete({where:{id:req.params.id,environmentId:req.params.environmentId}});res.status(204).end();});
+export default router;

@@ -1,0 +1,1 @@
+export default {content:['./index.html','./src/**/*.{ts,tsx}'],darkMode:'class',theme:{extend:{fontFamily:{display:['Space Grotesk','sans-serif'],body:['Inter','sans-serif']},colors:{brand:{primary:'#4F46E5',secondary:'#14B8A6',highlight:'#F59E0B',dark:'#0F172A',light:'#F8FAFC'}}}},plugins:[]};

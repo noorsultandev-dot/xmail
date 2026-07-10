@@ -1,0 +1,137 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "sqlite" url = env("DATABASE_URL") }
+
+enum CampaignStatus { DRAFT SCHEDULED QUEUED SENDING COMPLETED FAILED CANCELLED }
+enum ScheduleKind { ONCE DAILY WEEKLY }
+enum AnalyticsEventType { SENT OPEN CLICK BOUNCE FAILED }
+enum TemplateScope { GLOBAL ENVIRONMENT }
+
+enum ContactStatus { ACTIVE INVALID BOUNCED }
+
+model Environment {
+  id                  String   @id @default(cuid())
+  name                String
+  emailAddress        String   @unique
+  fromName            String?
+  smtpConfigEncrypted String
+  rateLimitPerMinute  Int      @default(30)
+  dailyQuota          Int?
+  defaultTemplateId   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  contacts      Contact[]
+  campaigns     Campaign[]
+  scheduledJobs ScheduledJob[]
+  analytics     AnalyticsEvent[]
+  templates     Template[]
+}
+
+model Contact {
+  id            String        @id @default(cuid())
+  environmentId String
+  email         String
+  firstName     String?
+  lastName      String?
+  tagsJson      String        @default("[]")
+  customJson    String        @default("{}")
+  status        ContactStatus @default(ACTIVE)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  environment   Environment   @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  deliveries    Delivery[]
+  @@unique([environmentId, email])
+  @@index([environmentId, status])
+}
+
+model Campaign {
+  id              String         @id @default(cuid())
+  environmentId   String
+  name            String
+  subjectA        String
+  subjectB        String?
+  htmlBody        String
+  textBody        String?
+  segmentJson     String         @default("{}")
+  status          CampaignStatus @default(DRAFT)
+  abTestPercent   Int            @default(0)
+  winningVariant  String?
+  sentCount       Int            @default(0)
+  failedCount     Int            @default(0)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  environment     Environment    @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  deliveries      Delivery[]
+  scheduledJobs   ScheduledJob[]
+  analytics       AnalyticsEvent[]
+  @@index([environmentId, status])
+}
+
+model Delivery {
+  id          String   @id @default(cuid())
+  campaignId  String
+  contactId   String
+  variant     String   @default("A")
+  status      String   @default("PENDING")
+  attempts    Int      @default(0)
+  messageId   String?
+  lastError   String?
+  sentAt      DateTime?
+  openedAt    DateTime?
+  clickedAt   DateTime?
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact     Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  @@unique([campaignId, contactId])
+  @@index([campaignId, status])
+}
+
+model ScheduledJob {
+  id            String       @id @default(cuid())
+  environmentId String
+  campaignId    String
+  kind          ScheduleKind @default(ONCE)
+  runAt         DateTime
+  cronExpression String?
+  active        Boolean      @default(true)
+  lastRunAt     DateTime?
+  missed        Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  environment   Environment  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  campaign      Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  @@index([environmentId, active, runAt])
+}
+
+model AnalyticsEvent {
+  id            String             @id @default(cuid())
+  environmentId String
+  campaignId    String?
+  deliveryId    String?
+  type          AnalyticsEventType
+  url           String?
+  metadataJson  String             @default("{}")
+  createdAt     DateTime           @default(now())
+  environment   Environment        @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  campaign      Campaign?          @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  @@index([environmentId, type, createdAt])
+  @@index([campaignId, type])
+}
+
+model Template {
+  id            String        @id @default(cuid())
+  environmentId String?
+  scope         TemplateScope @default(GLOBAL)
+  name          String
+  subject       String
+  htmlBody      String
+  textBody      String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  environment   Environment?  @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  @@index([scope, environmentId])
+}
+
+model AppSetting {
+  key       String   @id
+  valueJson String
+  updatedAt DateTime @updatedAt
+}

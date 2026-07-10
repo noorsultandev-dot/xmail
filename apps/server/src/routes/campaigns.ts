@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { prisma } from '../lib/prisma.js';
+import { sendQueue } from '../lib/queue.js';
+const router=Router();
+router.get('/:environmentId',async(req,res)=>res.json(await prisma.campaign.findMany({where:{environmentId:req.params.environmentId},orderBy:{createdAt:'desc'},include:{_count:{select:{deliveries:true}}}})));
+router.post('/:environmentId',async(req,res)=>{const d=z.object({name:z.string(),subjectA:z.string(),subjectB:z.string().optional(),htmlBody:z.string(),textBody:z.string().optional(),abTestPercent:z.number().min(0).max(50).default(0),segment:z.record(z.any()).default({})}).parse(req.body);const c=await prisma.campaign.create({data:{environmentId:req.params.environmentId,name:d.name,subjectA:d.subjectA,subjectB:d.subjectB,htmlBody:d.htmlBody,textBody:d.textBody,abTestPercent:d.abTestPercent,segmentJson:JSON.stringify(d.segment)}});res.status(201).json(c);});
+router.post('/:id/send',async(req,res)=>{const c=await prisma.campaign.findUniqueOrThrow({where:{id:req.params.id},include:{environment:true}});const contacts=await prisma.contact.findMany({where:{environmentId:c.environmentId,status:'ACTIVE'}});await prisma.campaign.update({where:{id:c.id},data:{status:'QUEUED'}});for(let i=0;i<contacts.length;i++){const variant=c.subjectB&&c.abTestPercent>0&&i%2===1?'B':'A';const d=await prisma.delivery.upsert({where:{campaignId_contactId:{campaignId:c.id,contactId:contacts[i].id}},create:{campaignId:c.id,contactId:contacts[i].id,variant},update:{status:'PENDING',variant}});await sendQueue.add({campaignId:c.id,deliveryId:d.id},{jobId:d.id});}res.json({queued:contacts.length});});
+router.get('/:id/progress',async(req,res)=>{const grouped=await prisma.delivery.groupBy({by:['status'],where:{campaignId:req.params.id},_count:true});res.json(Object.fromEntries(grouped.map(g=>[g.status,g._count])));});
+export default router;

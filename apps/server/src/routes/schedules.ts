@@ -1,0 +1,6 @@
+import { Router } from 'express';import { z } from 'zod';import { prisma } from '../lib/prisma.js';
+const router=Router();
+router.get('/:environmentId',async(req,res)=>res.json(await prisma.scheduledJob.findMany({where:{environmentId:req.params.environmentId},include:{campaign:true},orderBy:{runAt:'asc'}})));
+router.post('/:environmentId',async(req,res)=>{const d=z.object({campaignId:z.string(),runAt:z.string().datetime(),kind:z.enum(['ONCE','DAILY','WEEKLY']).default('ONCE'),cronExpression:z.string().optional()}).parse(req.body);const job=await prisma.scheduledJob.create({data:{environmentId:req.params.environmentId,campaignId:d.campaignId,runAt:new Date(d.runAt),kind:d.kind,cronExpression:d.cronExpression}});await prisma.campaign.update({where:{id:d.campaignId},data:{status:'SCHEDULED'}});res.status(201).json(job);});
+router.patch('/:id',async(req,res)=>{const d=z.object({runAt:z.string().datetime().optional(),active:z.boolean().optional()}).parse(req.body);res.json(await prisma.scheduledJob.update({where:{id:req.params.id},data:{active:d.active,runAt:d.runAt?new Date(d.runAt):undefined}}));});
+router.delete('/:id',async(req,res)=>{await prisma.scheduledJob.update({where:{id:req.params.id},data:{active:false}});res.status(204).end();});export default router;
